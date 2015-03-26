@@ -1,13 +1,15 @@
 CC	= g++
-CFLAGS = -Wall
+CFLAGS = -c -Wall
 LIBARG	= -g -std=c++11 
+EIGEN = .
+INC = -I $(EIGEN)
 TARGET	= lcMLkin
 SRC	= $(addsuffix .cpp, $(TARGET))
-CFLAGS=-c -Wall
+
 all: $(TARGET)
 
 $(TARGET): $(SRC)
-	$(CC) $(CFLAGS) $(SRC) $(LIBARG) -o $@
+	$(CC) $(SRC) $(LIBARG) $(INC) -o $@
 
 clean:
 	rm -f $(TARGET)
