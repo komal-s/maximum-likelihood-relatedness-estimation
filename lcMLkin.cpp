@@ -22,7 +22,7 @@
 std::vector<std::string> split(std::string &s, char delim) {
     
     std::vector<std::string> elements;
-
+    
     std::stringstream stream(s);
     std::string element;
     while (std::getline(stream, element, delim)) {
