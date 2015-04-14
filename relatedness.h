@@ -19,6 +19,7 @@
 
 #define IBD_COUNT 3
 #define GENOTYPE_COUNT 9
+#define FILENAME "data/sim2_5.vcf"
 
 class relatedness {
 
@@ -66,11 +67,13 @@ public:
 
 	void calculate_pairwise_ibd();
 
-	void optimize_parameters();
+	Eigen::Vector3d optimize_parameters();
 
 	double kin(std::pair<double,double>);
 
-	double gl_kin(std::pair<double,double> k12);
+	double gl_kin(std::pair<double,double>);
+
+	Eigen::Vector3d em_optimization(Eigen::Vector3d k_values);
 
 };
 

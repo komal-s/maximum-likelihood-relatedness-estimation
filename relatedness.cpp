@@ -1,4 +1,6 @@
 #include <iostream>
+#include <cstdlib>
+#include <iomanip>
 
 #include "relatedness.h"
 #include "utils.h"
@@ -71,23 +73,27 @@ void relatedness::calculate_ibs(){
 		double p = allele_frequency(i);
 		double q = 1.0-p;
 
-		ibs_all(0)(i,0) = pow(p,2)*pow(q,2); 	ibs_all(0)(i,1) = 0;			 		ibs_all(0)(i,2) = 0; //PPQQ
-    	ibs_all(1)(i,0) = pow(q,2)*pow(p,2);	ibs_all(1)(i,1) = 0; 					ibs_all(1)(i,2) = 0; //QQPP
+		ibs_all(0)(i,0) = pow(p,2)*pow(q,2); 	ibs_all(0)(i,1) = 0;			 		ibs_all(0)(i,2) = 0; //PP QQ
+    	ibs_all(1)(i,0) = pow(q,2)*pow(p,2);	ibs_all(1)(i,1) = 0; 					ibs_all(1)(i,2) = 0; //QQ PP
 		
-		ibs_all(2)(i,0) = pow(p,2)*(2*p*q);		ibs_all(2)(i,1) = (2*p*q)*pow(p,2); 	ibs_all(2)(i,2) = 0; //PPPQ
-		ibs_all(3)(i,0) = (2*p*q)*pow(p,2);		ibs_all(3)(i,1) = (p*q)*p; 				ibs_all(3)(i,2) = 0; //PQPP
-		ibs_all(4)(i,0) = (2*p*q)*pow(q,2);		ibs_all(4)(i,1) = (p*q)*q; 				ibs_all(4)(i,2) = 0; //PQQQ
-		ibs_all(5)(i,0) = pow(q,2)*(2*p*q);		ibs_all(5)(i,1) = pow(q,2)*p;			ibs_all(5)(i,2) = 0; //QQPQ
+		ibs_all(2)(i,0) = pow(p,2)*(2*p*q);		ibs_all(2)(i,1) = (2*p*q)*pow(p,2); 	ibs_all(2)(i,2) = 0; //PP PQ
+		ibs_all(3)(i,0) = (2*p*q)*pow(p,2);		ibs_all(3)(i,1) = (p*q)*p; 				ibs_all(3)(i,2) = 0; //PQ PP
+		ibs_all(4)(i,0) = (2*p*q)*pow(q,2);		ibs_all(4)(i,1) = (p*q)*q; 				ibs_all(4)(i,2) = 0; //PQ QQ
+		ibs_all(5)(i,0) = pow(q,2)*(2*p*q);		ibs_all(5)(i,1) = pow(q,2)*p;			ibs_all(5)(i,2) = 0; //QQ PQ
 
-		ibs_all(6)(i,0) = pow(p,4); 			ibs_all(6)(i,1) = pow(p,3);				ibs_all(6)(i,2) = pow(p,3); //PPPP
-		ibs_all(7)(i,0) = (2*p*q)*(2*p*q); 		ibs_all(7)(i,1) = p*q*(p+q);			ibs_all(7)(i,2) = 2*(p*q);  //PQPQ
-		ibs_all(8)(i,0) = pow(q,4);		 		ibs_all(8)(i,1) = pow(q,3);				ibs_all(8)(i,2) = pow(q,2); //QQQQ
+		ibs_all(6)(i,0) = pow(p,4); 			ibs_all(6)(i,1) = pow(p,3);				ibs_all(6)(i,2) = pow(p,3); //PP PP
+		ibs_all(7)(i,0) = (2*p*q)*(2*p*q); 		ibs_all(7)(i,1) = p*q*(p+q);			ibs_all(7)(i,2) = 2*(p*q);  //PQ PQ
+		ibs_all(8)(i,0) = pow(q,4);		 		ibs_all(8)(i,1) = pow(q,3);				ibs_all(8)(i,2) = pow(q,2); //QQ QQ
 
 	}
 
 }
 
 void relatedness::calculate_pairwise_ibd(){
+
+	std::string output_file (FILENAME +std::string(".relateF_optim_cpp"));
+	std::ofstream outfile (output_file);
+	outfile << "Ind1\tInd2\tk0_hat\tk1_hat\tk2_hat\tpi_HAT\tnbSNP\n";
 
 	//Generate Pairs
 	for(int i=0; i<header.size(); i++){
@@ -99,8 +105,8 @@ void relatedness::calculate_pairwise_ibd(){
 
 	//Parallalizable
 	/*Iterate through all pairwise computations */
-	for(int i=0; i<pairs.size();i++) {
-					
+	for(int i=0; i<pairs.size(); i++) {
+
 		/* Matrices for all possible pairs of genotypes for every SNP.
 		This will eventually store genotype likelihoods based on the calling likelihood (for example based on read depth)*/
 		/*Store these pairwise likelihoods in an array AATT,TTAA,AAAT,ATAA,ATTT,TTAT,AAAA,ATAT,TTTT */
@@ -124,8 +130,16 @@ void relatedness::calculate_pairwise_ibd(){
 			}	
 		}
 
-		optimize_parameters();
+		Eigen::Vector3d k_est = optimize_parameters();
+		
+		outfile << pairs[i].first << "\t" << pairs[i].second << "\t" 
+				<< std::setprecision(3) << k_est(0) << "\t" << k_est(1) << "\t" << k_est(2) << "\t" 
+				<< 0.5*k_est(1)+k_est(2) << "\t"
+				<< mask_snp.size()-mask_snp.sum() << "\n";
+		
 	}
+
+	outfile.close();
 }
 
 void relatedness::calculate_pairwise_likelihood(std::pair<int,int> pair){
@@ -180,10 +194,18 @@ void relatedness::calculate_pairwise_likelihood(std::pair<int,int> pair){
 }
 
 
-void relatedness::optimize_parameters(){
+Eigen::Vector3d relatedness::optimize_parameters(){
 
 	srand (time(0));
 
+	//Eigen::Vector3d k_est = Eigen::Vector3d::Zero();
+	Eigen::Vector3d k_values = Eigen::Vector3d::Random();
+	k_values /= k_values.sum();
+
+	return em_optimization(k_values);
+
+
+/*
 	for(int j=0; j<3; j++){
 		bool flag = false;
 		while(flag==false){
@@ -221,7 +243,7 @@ void relatedness::optimize_parameters(){
 		//to-do: minimize function
 		//to-do: opt_parameter <- parameter that minimizes the function
 	}
-
+*/
 }
 
 double relatedness::kin(std::pair<double,double> k12){
@@ -315,6 +337,78 @@ double relatedness::gl_kin(std::pair<double,double> k12){
     return ibs_sum;
 }
 
+/* Currently implements inference using the best genotypes (ibs_best) */
+Eigen::Vector3d relatedness::em_optimization(Eigen::Vector3d k_values){
+
+	//Probabilities of IBD for each SNP
+	Eigen::MatrixXd ibd_probability = Eigen::MatrixXd::Zero(snp_count,IBD_COUNT);
+
+	//Difference bwtween subsequent parameter estimates
+	double thresh = 100;
+	//Iteration number
+	int iter = 0;
+
+	while(thresh > 1e-4){
+		
+		Eigen::MatrixXd X = Eigen::MatrixXd::Zero(snp_count,IBD_COUNT);		
+		Eigen::VectorXd XS = Eigen::VectorXd::Zero(snp_count); //Used to normalize X
+
+		for(int i=0; i<snp_count; i++){
+			for(int j=0; j<IBD_COUNT; j++){
+				X(i,j)=ibs_best(i,j)*k_values(j);
+				//XS(i)+=X(i,j);
+			}
+		}
+		XS = X.colwise().sum();
+
+		//Normalize and Mask X
+		for(int i=0; i<snp_count; i++){
+			for(int j=0; j<IBD_COUNT; j++){
+				X(i,j)/=XS(j); //Normalize
+				if(mask_snp(i)==1){ //Mask: http://docs.scipy.org/doc/numpy/reference/maskedarray.generic.html
+					if(X(i,j)!=0){ //If X(i,j)==0, do nothing. Else, set X(i,j) to 1.
+						X(i,j)=1;
+					}
+				}
+			}
+		}
+
+		//Copy X to PIBD
+		ibd_probability=X;
+
+		//New parameter estimates
+		Eigen::Vector3d k_est = Eigen::Vector3d::Zero();
+
+		//Sum of probabilities at each site
+		for(int i=0; i<IBD_COUNT; i++){
+			for(int j=0; j<snp_count; j++){
+				if(mask_snp(j)==1){ //Mask
+					if(ibd_probability(j,i)!=0){
+						ibd_probability(j,i)=1;
+					}
+				}
+				k_est(i)+=ibd_probability(j,i);
+			}
+		}
+		//Normalized estimates
+		k_est /= k_est.sum();
+
+		// Compute the difference between successive estimates to assess convergence
+		thresh = (k_est-k_values).cwiseAbs().norm();
+
+        k_values = k_est;
+        iter++;
+
+        if(iter%100==0){
+        	std::cout<<k_est<<std::endl;
+        	std::cout<<"diff = "<<thresh<<std::endl;
+        }
+	
+	}
+
+	return k_values;
+}
+
 
 int main(){
 
@@ -323,7 +417,7 @@ int main(){
     gettimeofday(&start, &tzp);
 
     relatedness r;
-    std::string filename ("data/sim2_5.vcf");
+    std::string filename (FILENAME);
 
     std::cout<<"Populating Data"<<std::endl;
     r.populate_data(filename);
