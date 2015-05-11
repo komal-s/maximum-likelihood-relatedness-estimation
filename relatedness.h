@@ -19,12 +19,15 @@
 
 #define IBD_COUNT 3
 #define GENOTYPE_COUNT 9
-#define FILENAME "data/sim2_5.vcf"
 
 class relatedness {
 
 private:
-		
+
+	std::string infile;
+
+	std::string outfile;
+
 	std::vector<std::string> header;
 
 	std::vector<std::vector<std::string>> snp_data;	
@@ -57,7 +60,7 @@ private:
 
 public:
 
-	void populate_data(std::string);
+	void populate_data();
 
 	void calculate_allele_frequencies();
 
@@ -74,6 +77,10 @@ public:
 	double gl_kin(std::pair<double,double>);
 
 	Eigen::Vector3d em_optimization(Eigen::Vector3d k_values);
+
+	void set_infile(char*);
+
+	void set_outfile(char*);
 
 };
 

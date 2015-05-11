@@ -5,10 +5,10 @@
 #include "relatedness.h"
 #include "utils.h"
 
-void relatedness::populate_data(std::string filename){
+void relatedness::populate_data(){
 
 	//Read the VCF file line by line
-	std::ifstream vcfFile (filename);  	
+	std::ifstream vcfFile (infile);  	
   	std::vector<std::string> data;
   	std::string line; 
   	while (std::getline(vcfFile, line)){
@@ -67,7 +67,7 @@ void relatedness::calculate_ibs(){
 		ibs_all(i) = Eigen::MatrixXd::Zero(snp_count,IBD_COUNT);
 	}
 
-	/*Populate matrices with actual probablities*/
+	//Populate matrices with actual probablities
 	for(int i=0; i<snp_count; i++){
 
 		double p = allele_frequency(i);
@@ -91,7 +91,7 @@ void relatedness::calculate_ibs(){
 
 void relatedness::calculate_pairwise_ibd(){
 
-	std::string output_file (FILENAME +std::string(".relateF_optim_cpp"));
+	std::string output_file (outfile +std::string(".relateF_optim_cpp"));
 	std::ofstream outfile (output_file);
 	outfile << "Ind1\tInd2\tk0_hat\tk1_hat\tk2_hat\tpi_HAT\tnbSNP\n";
 
@@ -104,21 +104,21 @@ void relatedness::calculate_pairwise_ibd(){
 	}
 
 	//Parallalizable
-	/*Iterate through all pairwise computations */
+	//Iterate through all pairwise computations
 	for(int i=0; i<pairs.size(); i++) {
 
-		/* Matrices for all possible pairs of genotypes for every SNP.
-		This will eventually store genotype likelihoods based on the calling likelihood (for example based on read depth)*/
-		/*Store these pairwise likelihoods in an array AATT,TTAA,AAAT,ATAA,ATTT,TTAT,AAAA,ATAT,TTTT */
+		//Matrices for all possible pairs of genotypes for every SNP.
+		//This will eventually store genotype likelihoods based on the calling likelihood (for example based on read depth)
+		//Store these pairwise likelihoods in an array AATT,TTAA,AAAT,ATAA,ATTT,TTAT,AAAA,ATAT,TTTT 
 		ibs_pairwise = Eigen::MatrixXd::Zero(snp_count,GENOTYPE_COUNT);
 
-		/*A matrix to denote SNPs we may want to mask for two reasons(see below)*/
+		//A matrix to denote SNPs we may want to mask for two reasons(see below)
 		mask_snp = Eigen::VectorXd::Zero(snp_count);
 
 		calculate_pairwise_likelihood(pairs[i]);
 
-		/*Identify the most likely genotype combination: Index of genotype for that SNP*/
-		/*For each SNP, given the best genotype combination, pull out the appropriate P(IBS|IBD) for all three IBS possibilities*/
+		//Identify the most likely genotype combination: Index of genotype for that SNP
+		//For each SNP, given the best genotype combination, pull out the appropriate P(IBS|IBD) for all three IBS possibilities
 		ibs_best = Eigen::MatrixXd::Zero(snp_count,GENOTYPE_COUNT);
 
 		for(int j=0; j<snp_count; j++){
@@ -145,18 +145,18 @@ void relatedness::calculate_pairwise_ibd(){
 void relatedness::calculate_pairwise_likelihood(std::pair<int,int> pair){
 
 	//Parallallize
-	/*Iterate through all SNPs*/
+	//Iterate through all SNPs
 	for(int j=0; j<snp_count; j++){
 
 	    double p=allele_frequency(j);
 	    double q=1.0-p;
 
-		/*Mask SNPs where allele frequency is fixed*/
+		//Mask SNPs where allele frequency is fixed
 		if (allele_frequency(j)==1.0||allele_frequency(j)==0.0){
 		    mask_snp(j)=1;
 		}
 	    
-	    /*Pulls out info field for first individual from VCF, pulls out the three precomputed genotype likelihoods*/
+	    //Pulls out info field for first individual from VCF, pulls out the three precomputed genotype likelihoods
 		std::vector<std::string> l1 = split(split(snp_data[j][pair.first],':')[3],',');
 		std::vector<std::string> l2 = split(split(snp_data[j][pair.second],':')[3],',');
 
@@ -164,17 +164,17 @@ void relatedness::calculate_pairwise_likelihood(std::pair<int,int> pair){
 		double* likelihood_1 = new double[l1.size()];
 		double* likelihood_2 = new double[l2.size()];
 
-		/*Convert likelihoods from strings to floating point numbers*/
+		//Convert likelihoods from strings to floating point numbers
 		for(int k=0; k<l1.size(); k++){
 			likelihood_1[k]=std::stod(l1[k]);
 			likelihood_2[k]=std::stod(l2[k]);
-			/*If one of those likelihoods comes out as negative (anomaly), we mask those SNPs*/
+			//If one of those likelihoods comes out as negative (anomaly), we mask those SNPs
 			if(likelihood_1[k]==-9.0 || likelihood_2[k]==-9.0){
 				mask_snp[j]=1;
 			}
 		}
 
-		/*Calculate the probability of observing all possible two genotype combinations by multiplying their likelihoods*/
+		//Calculate the probability of observing all possible two genotype combinations by multiplying their likelihoods
 		ibs_pairwise(j,0)=(likelihood_1[0]*likelihood_2[2]);
 	    ibs_pairwise(j,1)=(likelihood_1[2]*likelihood_2[0]);
 
@@ -187,7 +187,7 @@ void relatedness::calculate_pairwise_likelihood(std::pair<int,int> pair){
 	    ibs_pairwise(j,7)=(likelihood_1[1]*likelihood_2[1]);
 	    ibs_pairwise(j,8)=(likelihood_1[2]*likelihood_2[2]);
 
-		/*Clean up*/
+		//Clean up
 		delete[] likelihood_1;
 		delete[] likelihood_2;
 	}
@@ -337,7 +337,7 @@ double relatedness::gl_kin(std::pair<double,double> k12){
     return ibs_sum;
 }
 
-/* Currently implements inference using the best genotypes (ibs_best) */
+//Currently implements inference using the best genotypes (ibs_best)
 Eigen::Vector3d relatedness::em_optimization(Eigen::Vector3d k_values){
 
 	//Probabilities of IBD for each SNP
@@ -409,18 +409,37 @@ Eigen::Vector3d relatedness::em_optimization(Eigen::Vector3d k_values){
 	return k_values;
 }
 
+void relatedness::set_infile(char* filename){
 
-int main(){
+	infile = std::string(filename); 
+}
+
+void relatedness::set_outfile(char* filename){
+
+	outfile = std::string(filename); 
+}
+
+void usage(char *program) {
+    std::cerr << "Usage: " << program << " <input_file_path> <output_file_path> <genotype>" << std::endl;
+    exit(1);
+}
+
+int main(int argc, char* argv[]){
+
+  	if (argc<2) {
+    	usage(argv[0]);
+  	}
 
 	struct timeval start, end;
     struct timezone tzp;
     gettimeofday(&start, &tzp);
 
     relatedness r;
-    std::string filename (FILENAME);
+    r.set_infile(argv[1]);
+    r.set_outfile(argv[2]);
 
     std::cout<<"Populating Data"<<std::endl;
-    r.populate_data(filename);
+    r.populate_data();
 
     std::cout<<"Calculating Allelle Frequencies"<<std::endl;
     r.calculate_allele_frequencies();

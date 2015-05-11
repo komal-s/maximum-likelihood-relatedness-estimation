@@ -1,12 +1,10 @@
 CC	= g++
-CFLAGS = -c -Wall
-LIBARG	= -g -std=c++11 
+CFLAGS = -c -Wall -Werror -fmax-errors=3
+LIBARG	= -g -std=c++11 -O3 
 EIGEN = .
 INC = -I $(EIGEN)
 TARGET	= relatedness utils
 SRC	= $(addsuffix .cpp, $(TARGET))
-
-all: $(TARGET)
 
 $(TARGET): $(SRC)
 	$(CC) $(SRC) $(LIBARG) $(INC) -o $@
