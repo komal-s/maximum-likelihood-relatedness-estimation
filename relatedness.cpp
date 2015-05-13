@@ -152,9 +152,12 @@ void relatedness::calculate_pairwise_likelihood(std::pair<int,int> pair){
 
 void relatedness::calculate_pairwise_ibd(){
 
+	#ifdef DEBUG
+	std::cout << "Ind1\tInd2\tk0_hat\tk1_hat\tk2_hat\tpi_HAT\tnbSNP\n";
+	#endif
+
 	std::string output_file (outfile +std::string(".relateF_optim_cpp"));
 	std::ofstream outfile (output_file);
-	std::cout << "Ind1\tInd2\tk0_hat\tk1_hat\tk2_hat\tpi_HAT\tnbSNP\n";
 	outfile << "Ind1\tInd2\tk0_hat\tk1_hat\tk2_hat\tpi_HAT\tnbSNP\n";
 
 	//Generate Pairs
@@ -167,8 +170,8 @@ void relatedness::calculate_pairwise_ibd(){
 
 	std::srand(std::time(0));
 
-	//Parallalizable
 	//Iterate through all pairwise computations
+	#pragma omp parallel for
 	for(int i=0; i<pairs.size(); i++) {
 
 		//Matrices for all possible pairs of genotypes for every SNP.
@@ -194,13 +197,16 @@ void relatedness::calculate_pairwise_ibd(){
 		}
 
 		Eigen::Vector3d k_est = optimize_parameters();
-
+		//floor(x*10.0)/10.0
+		#ifdef DEBUG
 		std::cout << pairs[i].first+1 << "\t" << pairs[i].second+1 << "\t" 
 				<< std::setprecision(3) 
 				<< k_est(0) << "\t" << k_est(1) << "\t" << k_est(2) << "\t" 
 				<< 0.5*k_est(1)+k_est(2) << "\t"
 				<< mask_snp.size()-mask_snp.sum() << "\n";
-		
+		#endif
+
+		#pragma omp critical
 		outfile << pairs[i].first+1 << "\t" << pairs[i].second+1 << "\t" 
 				<< std::setprecision(3) 
 				<< k_est(0) << "\t" << k_est(1) << "\t" << k_est(2) << "\t" 
@@ -209,7 +215,6 @@ void relatedness::calculate_pairwise_ibd(){
 		
 	}
 
-	outfile.close();
 }
 
 
@@ -448,6 +453,7 @@ int main(int argc, char* argv[]){
   	if (argc<2) {
     	usage(argv[0]);
   	}
+  	std::cout << "Max Threads = " << omp_get_max_threads() << std::endl;
 
 	struct timeval start, end;
     struct timezone tzp;
