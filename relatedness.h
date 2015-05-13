@@ -1,21 +1,10 @@
 #ifndef RELATEDNESS_H
 #define RELATEDNESS_H
 
-#include <iostream>
-#include <fstream>
-
 #include <string>
-#include <sstream>
 #include <vector>
 
-#include <algorithm>
-#include <math.h>
-#include <limits>
 #include <Eigen/Dense>
-
-#include <time.h>
-#include <sys/resource.h>
-#include <sys/time.h>
 
 #define IBD_COUNT 3
 #define GENOTYPE_COUNT 9

@@ -1,6 +1,16 @@
 #include <iostream>
+#include <fstream>
+#include <sstream>
+
 #include <cstdlib>
+#include <ctime>
 #include <iomanip>
+
+#include <algorithm>
+#include <math.h>
+#include <limits>
+
+#include <omp.h>
 
 #include "relatedness.h"
 #include "utils.h"
@@ -28,12 +38,12 @@ void relatedness::populate_data(){
 	for(auto iter=data.begin()+1; iter!=data.end(); iter++){
 		std::vector<std::string> elements = split(*iter,'\t');
   		std::copy(elements.begin()+9, elements.end(),elements.begin());
-  		if(elements.size()>1)
+  		if(elements.size()>1){
 	  		snp_data.push_back(elements);
+  		}
 	}
 
 	snp_count = snp_data.size();
-
 }
 
 void relatedness::calculate_allele_frequencies(){
@@ -55,14 +65,13 @@ void relatedness::calculate_allele_frequencies(){
 		for(auto iter=counts.begin(); iter!=counts.end(); iter++){
 			if(*iter==0) zeroes++;
 		}
-		allele_frequency(i++) = zeroes/(double)counts.size();
+		allele_frequency(i) = zeroes/(double)counts.size();
 	}
 
 }
 
 void relatedness::calculate_ibs(){	
 
-	//ibs_all = Eigen::MatrixXd::Zero(snp_count, IBD_COUNT);	
 	for(int i=0; i<GENOTYPE_COUNT; i++){
 		ibs_all(i) = Eigen::MatrixXd::Zero(snp_count,IBD_COUNT);
 	}
@@ -76,70 +85,17 @@ void relatedness::calculate_ibs(){
 		ibs_all(0)(i,0) = pow(p,2)*pow(q,2); 	ibs_all(0)(i,1) = 0;			 		ibs_all(0)(i,2) = 0; //PP QQ
     	ibs_all(1)(i,0) = pow(q,2)*pow(p,2);	ibs_all(1)(i,1) = 0; 					ibs_all(1)(i,2) = 0; //QQ PP
 		
-		ibs_all(2)(i,0) = pow(p,2)*(2*p*q);		ibs_all(2)(i,1) = (2*p*q)*pow(p,2); 	ibs_all(2)(i,2) = 0; //PP PQ
+		ibs_all(2)(i,0) = pow(p,2)*(2*p*q);		ibs_all(2)(i,1) = pow(p,2)*q; 			ibs_all(2)(i,2) = 0; //PP PQ
 		ibs_all(3)(i,0) = (2*p*q)*pow(p,2);		ibs_all(3)(i,1) = (p*q)*p; 				ibs_all(3)(i,2) = 0; //PQ PP
 		ibs_all(4)(i,0) = (2*p*q)*pow(q,2);		ibs_all(4)(i,1) = (p*q)*q; 				ibs_all(4)(i,2) = 0; //PQ QQ
 		ibs_all(5)(i,0) = pow(q,2)*(2*p*q);		ibs_all(5)(i,1) = pow(q,2)*p;			ibs_all(5)(i,2) = 0; //QQ PQ
 
-		ibs_all(6)(i,0) = pow(p,4); 			ibs_all(6)(i,1) = pow(p,3);				ibs_all(6)(i,2) = pow(p,3); //PP PP
+		ibs_all(6)(i,0) = pow(p,4); 			ibs_all(6)(i,1) = pow(p,3);				ibs_all(6)(i,2) = pow(p,2); //PP PP
 		ibs_all(7)(i,0) = (2*p*q)*(2*p*q); 		ibs_all(7)(i,1) = p*q*(p+q);			ibs_all(7)(i,2) = 2*(p*q);  //PQ PQ
 		ibs_all(8)(i,0) = pow(q,4);		 		ibs_all(8)(i,1) = pow(q,3);				ibs_all(8)(i,2) = pow(q,2); //QQ QQ
 
 	}
 
-}
-
-void relatedness::calculate_pairwise_ibd(){
-
-	std::string output_file (outfile +std::string(".relateF_optim_cpp"));
-	std::ofstream outfile (output_file);
-	outfile << "Ind1\tInd2\tk0_hat\tk1_hat\tk2_hat\tpi_HAT\tnbSNP\n";
-
-	//Generate Pairs
-	for(int i=0; i<header.size(); i++){
-		for(int j=i+1; j<header.size(); j++){
-			if(split(header[i],'_')[0]==split(header[j],'_')[0])
-				pairs.push_back(std::make_pair(i,j));
-		}
-	}
-
-	//Parallalizable
-	//Iterate through all pairwise computations
-	for(int i=0; i<pairs.size(); i++) {
-
-		//Matrices for all possible pairs of genotypes for every SNP.
-		//This will eventually store genotype likelihoods based on the calling likelihood (for example based on read depth)
-		//Store these pairwise likelihoods in an array AATT,TTAA,AAAT,ATAA,ATTT,TTAT,AAAA,ATAT,TTTT 
-		ibs_pairwise = Eigen::MatrixXd::Zero(snp_count,GENOTYPE_COUNT);
-
-		//A matrix to denote SNPs we may want to mask for two reasons(see below)
-		mask_snp = Eigen::VectorXd::Zero(snp_count);
-
-		calculate_pairwise_likelihood(pairs[i]);
-
-		//Identify the most likely genotype combination: Index of genotype for that SNP
-		//For each SNP, given the best genotype combination, pull out the appropriate P(IBS|IBD) for all three IBS possibilities
-		ibs_best = Eigen::MatrixXd::Zero(snp_count,GENOTYPE_COUNT);
-
-		for(int j=0; j<snp_count; j++){
-			Eigen::MatrixXf::Index bestIndex;
-			double max = ibs_pairwise.row(j).maxCoeff(&bestIndex);
-
-			for(int k=0; k<IBD_COUNT; k++){
-				ibs_best(j,k) = ibs_all(bestIndex)(j,k);		
-			}	
-		}
-
-		Eigen::Vector3d k_est = optimize_parameters();
-		
-		outfile << pairs[i].first << "\t" << pairs[i].second << "\t" 
-				<< std::setprecision(3) << k_est(0) << "\t" << k_est(1) << "\t" << k_est(2) << "\t" 
-				<< 0.5*k_est(1)+k_est(2) << "\t"
-				<< mask_snp.size()-mask_snp.sum() << "\n";
-		
-	}
-
-	outfile.close();
 }
 
 void relatedness::calculate_pairwise_likelihood(std::pair<int,int> pair){
@@ -191,15 +147,78 @@ void relatedness::calculate_pairwise_likelihood(std::pair<int,int> pair){
 		delete[] likelihood_1;
 		delete[] likelihood_2;
 	}
+
 }
+
+void relatedness::calculate_pairwise_ibd(){
+
+	std::string output_file (outfile +std::string(".relateF_optim_cpp"));
+	std::ofstream outfile (output_file);
+	std::cout << "Ind1\tInd2\tk0_hat\tk1_hat\tk2_hat\tpi_HAT\tnbSNP\n";
+	outfile << "Ind1\tInd2\tk0_hat\tk1_hat\tk2_hat\tpi_HAT\tnbSNP\n";
+
+	//Generate Pairs
+	for(int i=0; i<header.size(); i++){
+		for(int j=i+1; j<header.size(); j++){
+			if(split(header[i],'_')[0]==split(header[j],'_')[0])
+				pairs.push_back(std::make_pair(i,j));
+		}
+	}
+
+	std::srand(std::time(0));
+
+	//Parallalizable
+	//Iterate through all pairwise computations
+	for(int i=0; i<pairs.size(); i++) {
+
+		//Matrices for all possible pairs of genotypes for every SNP.
+		//This will eventually store genotype likelihoods based on the calling likelihood (for example based on read depth)
+		//Store these pairwise likelihoods in an array AATT,TTAA,AAAT,ATAA,ATTT,TTAT,AAAA,ATAT,TTTT 
+		ibs_pairwise = Eigen::MatrixXd::Zero(snp_count,GENOTYPE_COUNT);
+
+		//A matrix to denote SNPs we may want to mask for two reasons(see below)
+		mask_snp = Eigen::VectorXd::Zero(snp_count);
+
+		calculate_pairwise_likelihood(pairs[i]);
+
+		//Identify the most likely genotype combination: Index of genotype for that SNP
+		//For each SNP, given the best genotype combination, pull out the appropriate P(IBS|IBD) for all three IBS possibilities
+		ibs_best = Eigen::MatrixXd::Zero(snp_count,IBD_COUNT);
+		
+		for(int j=0; j<snp_count; j++){
+			Eigen::MatrixXf::Index bestIndex;
+			double max = ibs_pairwise.row(j).maxCoeff(&bestIndex);
+			for(int k=0; k<IBD_COUNT; k++){
+				ibs_best(j,k) = ibs_all(bestIndex)(j,k);		
+			}	
+		}
+
+		Eigen::Vector3d k_est = optimize_parameters();
+
+		std::cout << pairs[i].first+1 << "\t" << pairs[i].second+1 << "\t" 
+				<< std::setprecision(3) 
+				<< k_est(0) << "\t" << k_est(1) << "\t" << k_est(2) << "\t" 
+				<< 0.5*k_est(1)+k_est(2) << "\t"
+				<< mask_snp.size()-mask_snp.sum() << "\n";
+		
+		outfile << pairs[i].first+1 << "\t" << pairs[i].second+1 << "\t" 
+				<< std::setprecision(3) 
+				<< k_est(0) << "\t" << k_est(1) << "\t" << k_est(2) << "\t" 
+				<< 0.5*k_est(1)+k_est(2) << "\t"
+				<< mask_snp.size()-mask_snp.sum() << "\n";
+		
+	}
+
+	outfile.close();
+}
+
+
 
 
 Eigen::Vector3d relatedness::optimize_parameters(){
 
-	srand (time(0));
-
-	//Eigen::Vector3d k_est = Eigen::Vector3d::Zero();
 	Eigen::Vector3d k_values = Eigen::Vector3d::Random();
+	k_values = k_values.cwiseAbs();	
 	k_values /= k_values.sum();
 
 	return em_optimization(k_values);
@@ -356,19 +375,28 @@ Eigen::Vector3d relatedness::em_optimization(Eigen::Vector3d k_values){
 		for(int i=0; i<snp_count; i++){
 			for(int j=0; j<IBD_COUNT; j++){
 				X(i,j)=ibs_best(i,j)*k_values(j);
-				//XS(i)+=X(i,j);
 			}
 		}
-		XS = X.colwise().sum();
+		
+		XS = X.rowwise().sum();
+		for(int i=0;i <snp_count; i++){ //Mask
+			if(mask_snp(i)==1){
+				XS(i)=0;
+			}
+		}
 
-		//Normalize and Mask X
+		//Normalize X
 		for(int i=0; i<snp_count; i++){
-			for(int j=0; j<IBD_COUNT; j++){
-				X(i,j)/=XS(j); //Normalize
-				if(mask_snp(i)==1){ //Mask: http://docs.scipy.org/doc/numpy/reference/maskedarray.generic.html
-					if(X(i,j)!=0){ //If X(i,j)==0, do nothing. Else, set X(i,j) to 1.
+			if(XS(i)==0){
+				for(int j=0; j<IBD_COUNT; j++){
+					if(X(i,j)!=0){
 						X(i,j)=1;
 					}
+				}				
+			}
+			else{
+				for(int j=0; j<IBD_COUNT; j++){
+					X(i,j)/=XS(i);
 				}
 			}
 		}
@@ -380,30 +408,21 @@ Eigen::Vector3d relatedness::em_optimization(Eigen::Vector3d k_values){
 		Eigen::Vector3d k_est = Eigen::Vector3d::Zero();
 
 		//Sum of probabilities at each site
-		for(int i=0; i<IBD_COUNT; i++){
+		for(int i=0; i<IBD_COUNT; i++){			
 			for(int j=0; j<snp_count; j++){
-				if(mask_snp(j)==1){ //Mask
-					if(ibd_probability(j,i)!=0){
-						ibd_probability(j,i)=1;
-					}
+				if(mask_snp(j)!=1){ //Mask
+					k_est(i)+=ibd_probability(j,i);		
 				}
-				k_est(i)+=ibd_probability(j,i);
 			}
 		}
+
 		//Normalized estimates
 		k_est /= k_est.sum();
 
 		// Compute the difference between successive estimates to assess convergence
 		thresh = (k_est-k_values).cwiseAbs().norm();
-
         k_values = k_est;
-        iter++;
-
-        if(iter%100==0){
-        	std::cout<<k_est<<std::endl;
-        	std::cout<<"diff = "<<thresh<<std::endl;
-        }
-	
+        iter++;	
 	}
 
 	return k_values;
@@ -439,13 +458,13 @@ int main(int argc, char* argv[]){
     r.set_outfile(argv[2]);
 
     std::cout<<"Populating Data"<<std::endl;
-    r.populate_data();
+    r.populate_data(); //works correctly
 
     std::cout<<"Calculating Allelle Frequencies"<<std::endl;
-    r.calculate_allele_frequencies();
+    r.calculate_allele_frequencies(); //works correctly
 
 	std::cout<<"Calculating Prestored IBS|IBD"<<std::endl;
-	r.calculate_ibs();    
+	r.calculate_ibs(); //works correctly
 
 	std::cout<<"Starting Pairwise IBD Computations"<<std::endl;
 	r.calculate_pairwise_ibd();
